@@ -1,5 +1,4 @@
-#ifndef FENSTER_H
-#define FENSTER_H
+#pragma once
 
 #if defined(__APPLE__)
 #include <CoreGraphics/CoreGraphics.h>
@@ -20,8 +19,8 @@
 
 struct fenster {
   const char *title;
-  const int width;
-  const int height;
+  int width;
+  int height;
   uint32_t *buf;
   int keys[256]; /* keys are mostly ASCII, but arrows are 17..20 */
   int mod;       /* mod is 4 bits mask, ctrl=1, shift=2, alt=4, meta=8 */
@@ -50,6 +49,8 @@ FENSTER_API void fenster_sleep(int64_t ms);
 FENSTER_API int64_t fenster_time();
 #define fenster_pixel(f, x, y) ((f)->buf[((y) * (f)->width) + (x)])
 
+
+#ifdef FENSTER_IMPL
 #ifndef FENSTER_HEADER
 #if defined(__APPLE__)
 #define msg(r, o, s) ((r(*)(id, SEL))objc_msgSend)(o, sel_getUid(s))
@@ -178,7 +179,8 @@ static LRESULT CALLBACK fenster_wndproc(HWND hwnd, UINT msg, WPARAM wParam,
     HDC memdc = CreateCompatibleDC(hdc);
     HBITMAP hbmp = CreateCompatibleBitmap(hdc, f->width, f->height);
     HBITMAP oldbmp = SelectObject(memdc, hbmp);
-    BITMAPINFO bi = {{sizeof(bi), f->width, -f->height, 1, 32, BI_RGB}};
+    static BITMAPINFO bi = {0};
+    bi = {{sizeof(BITMAPINFO), f->width, -f->height, 1, 32, BI_RGB}};
     bi.bmiColors[0].rgbRed = 0xff;
     bi.bmiColors[1].rgbGreen = 0xff;
     bi.bmiColors[2].rgbBlue = 0xff;
@@ -216,17 +218,23 @@ static LRESULT CALLBACK fenster_wndproc(HWND hwnd, UINT msg, WPARAM wParam,
   }
   return 0;
 }
-
+static wchar_t* wtitle;
 FENSTER_API int fenster_open(struct fenster *f) {
+  // Convert the className from narrow-character to wide-character format
+  size_t len = strlen(f->title);
+  int wlen = MultiByteToWideChar(CP_ACP, 0, f->title, len, NULL, 0);
+  wtitle = (wchar_t*)malloc(wlen * sizeof(wchar_t));
+  MultiByteToWideChar(CP_ACP, 0, f->title, len, wtitle, wlen);
+  wtitle[len] = L'\0'; 
   HINSTANCE hInstance = GetModuleHandle(NULL);
   WNDCLASSEX wc = {0};
   wc.cbSize = sizeof(WNDCLASSEX);
   wc.style = CS_VREDRAW | CS_HREDRAW;
   wc.lpfnWndProc = fenster_wndproc;
   wc.hInstance = hInstance;
-  wc.lpszClassName = f->title;
+  wc.lpszClassName = wtitle;
   RegisterClassEx(&wc);
-  f->hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, f->title, f->title,
+  f->hwnd = CreateWindowExW(WS_EX_CLIENTEDGE, wtitle, wtitle,
                            WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                            f->width, f->height, NULL, NULL, hInstance, NULL);
 
@@ -235,10 +243,14 @@ FENSTER_API int fenster_open(struct fenster *f) {
   SetWindowLongPtr(f->hwnd, GWLP_USERDATA, (LONG_PTR)f);
   ShowWindow(f->hwnd, SW_NORMAL);
   UpdateWindow(f->hwnd);
+  //free(wtitle);
   return 0;
 }
 
-FENSTER_API void fenster_close(struct fenster *f) { (void)f; }
+FENSTER_API void fenster_close(struct fenster *f) { 
+    free(wtitle);
+    (void)f; 
+}
 
 FENSTER_API int fenster_loop(struct fenster *f) {
   MSG msg;
@@ -363,5 +375,5 @@ public:
 };
 #endif /* __cplusplus */
 
-#endif /* !FENSTER_HEADER */
+#endif //FENSTER_IMPL
 #endif /* FENSTER_H */
